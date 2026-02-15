@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-// @ts-ignore  // Ignore l'erreur de type pour pdf-parse (pas de types officiels)
+// @ts-ignore
 import pdf from 'pdf-parse';
 
+// Export direct de la fonction POST (sans "export default")
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
@@ -15,7 +16,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // EXTRACTION DU TEXTE avec pdf-parse
+    // Extraction du texte avec pdf-parse
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
     let textContent: string;
@@ -30,7 +31,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2. DICTIONNAIRE DE PROMPTS (inchangé)
+    // Dictionnaire de prompts
     const prompts = {
       fr: `Tu es un analyste senior. Structure de réponse :
            1. NATURE ET CONTEXTE
@@ -55,7 +56,7 @@ export async function POST(req: Request) {
       - Titles in UPPERCASE.
       - Stay factual.`;
 
-    // 3. APPEL MISTRAL (inchangé)
+    // Appel à Mistral
     const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -84,7 +85,7 @@ export async function POST(req: Request) {
     const data = await response.json();
     const fullContent = data.choices[0].message.content;
 
-    // 4. NETTOYAGE (inchangé)
+    // Nettoyage de la réponse
     const chartMatch = fullContent.match(/\[CHART_DATA\]([\s\S]*?)\[\/CHART_DATA\]/);
     let chartData = null;
     let cleanResponse = fullContent.replace(/\[CHART_DATA\][\s\S]*?\[\/CHART_DATA\]/, "");
