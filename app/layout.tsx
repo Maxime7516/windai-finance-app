@@ -29,11 +29,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
 
   useEffect(() => {
-    const savedLang = localStorage.getItem("language") || "fr";
+    const savedLang = typeof window !== "undefined" ? localStorage.getItem("language") || "fr" : "fr";
     setLang(savedLang);
   }, []);
 
-  const t = menuI18n[lang as "fr" | "en"];
+  const t = menuI18n[lang as "fr" | "en"] || menuI18n.fr;
 
   return (
     <html lang={lang}>
@@ -47,7 +47,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="flex flex-col gap-2 flex-1">
             {[
               { href: "/analyse", icon: BarChart3, label: t.ia },
-              { href: "/historique", icon: History, label: t.history, badge: true },
+              { href: "/historique", icon: History, label: t.history },
               { href: "/notation", icon: Star, label: t.rating },
               { href: "/commentaires", icon: MessageSquare, label: t.comments },
               { href: "/reporting", icon: FileText, label: t.reporting },
@@ -59,14 +59,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`flex items-center justify-between p-3 rounded-xl transition-all duration-200 no-underline group ${
+                  className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-200 no-underline group ${
                     isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-100" : "text-slate-500 hover:bg-slate-50"
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <Icon className={`w-5 h-5 ${isActive ? "text-white" : "text-slate-400 group-hover:text-blue-600"}`} />
-                    <span className="text-[15px] font-semibold">{link.label}</span>
-                  </div>
+                  <Icon className={`w-5 h-5 ${isActive ? "text-white" : "text-slate-400 group-hover:text-blue-600"}`} />
+                  <span className="text-[15px] font-semibold">{link.label}</span>
                 </Link>
               );
             })}

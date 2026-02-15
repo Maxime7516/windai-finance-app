@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 // @ts-ignore
-import pdf from 'pdf-parse';
+import PDFParser from "pdf2json";
 
-// Export direct de la fonction POST (sans "export default")
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File;
-    const lang = formData.get("lang") as string || "fr";
+    const lang = (formData.get("lang") as string) || "fr";
 
     if (!file) {
       return NextResponse.json(
@@ -16,28 +15,25 @@ export async function POST(req: Request) {
       );
     }
 
-    // Extraction du texte avec pdf-parse
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    let textContent: string;
-    try {
-      const data = await pdf(buffer);
-      textContent = data.text;
-    } catch (e) {
-      console.error("Erreur lors de la lecture du PDF :", e);
-      return NextResponse.json(
-        { error: lang === "fr" ? "Fichier PDF invalide" : "Invalid PDF file" },
-        { status: 400 }
-      );
-    }
 
-    // Dictionnaire de prompts
+    // Extraction du texte avec pdf2json (plus stable sur Next.js)
+    const textContent = await new Promise<string>((resolve, reject) => {
+      const pdfParser = new (PDFParser as any)(null, 1);
+      pdfParser.on("pdfParser_dataError", (errData: any) => reject(errData.parserError));
+      pdfParser.on("pdfParser_dataReady", () => {
+        resolve(pdfParser.getRawTextContent());
+      });
+      pdfParser.parseBuffer(buffer);
+    });
+
     const prompts = {
       fr: `Tu es un analyste senior. Structure de réponse :
            1. NATURE ET CONTEXTE
            2. PRÉSENTATION DE LA SOCIÉTÉ
            3. SYNTHÈSE DES AXES MAJEURS
-           4. Analyse DES COMPTES
+           4. ANALYSE DES COMPTES
            5. CONCLUSION
            Ajoute [CHART_DATA] {"years": [], "revenue": [], "netIncome": []} [/CHART_DATA]`,
       en: `You are a senior analyst. Response structure:
@@ -56,7 +52,6 @@ export async function POST(req: Request) {
       - Titles in UPPERCASE.
       - Stay factual.`;
 
-    // Appel à Mistral
     const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -67,7 +62,7 @@ export async function POST(req: Request) {
         model: "mistral-large-latest",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `Analyze this: ${textContent.substring(0, 15000)}` }
+          { role: "user", content: `Analyze this document: ${textContent.substring(0, 10000)}` }
         ],
         temperature: 0.1
       })
@@ -75,17 +70,12 @@ export async function POST(req: Request) {
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error("Erreur Mistral API:", errorData);
-      return NextResponse.json(
-        { error: "Erreur API Mistral", details: errorData },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Erreur Mistral", details: errorData }, { status: 500 });
     }
 
     const data = await response.json();
     const fullContent = data.choices[0].message.content;
 
-    // Nettoyage de la réponse
     const chartMatch = fullContent.match(/\[CHART_DATA\]([\s\S]*?)\[\/CHART_DATA\]/);
     let chartData = null;
     let cleanResponse = fullContent.replace(/\[CHART_DATA\][\s\S]*?\[\/CHART_DATA\]/, "");
@@ -104,9 +94,6 @@ export async function POST(req: Request) {
 
   } catch (error: any) {
     console.error("Erreur serveur:", error);
-    return NextResponse.json(
-      { error: error.message || "Erreur interne" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message || "Erreur interne" }, { status: 500 });
   }
 }
