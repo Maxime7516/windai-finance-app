@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 // @ts-ignore
 import PDFParser from "pdf2json";
 
+// --- CONFIGURATION VERCEL (AJOUTÉE) ---
+export const maxDuration = 60; // Autorise 60 secondes de calcul (IA)
+export const dynamic = 'force-dynamic';
+// --------------------------------------
+
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
