@@ -1,37 +1,44 @@
 import { NextResponse } from "next/server";
-const PDFParser = require("pdf2json");
+// @ts-ignore  // Ignore l'erreur de type pour pdf-parse (pas de types officiels)
+import pdf from 'pdf-parse';
 
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File;
-    // 1. On récupère la langue envoyée par le front-end (défaut 'fr')
     const lang = formData.get("lang") as string || "fr";
 
     if (!file) {
-      return NextResponse.json({ error: lang === "fr" ? "Fichier PDF manquant" : "Missing PDF file" }, { status: 400 });
+      return NextResponse.json(
+        { error: lang === "fr" ? "Fichier PDF manquant" : "Missing PDF file" },
+        { status: 400 }
+      );
     }
 
-    // EXTRACTION DU TEXTE
+    // EXTRACTION DU TEXTE avec pdf-parse
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    const textContent: string = await new Promise((resolve, reject) => {
-      const pdfParser = new (PDFParser as any)(null, 1);
-      pdfParser.on("pdfParser_dataError", (errData: any) => reject(errData.parserError));
-      pdfParser.on("pdfParser_dataReady", () => resolve(pdfParser.getRawTextContent()));
-      pdfParser.parseBuffer(buffer);
-    });
+    let textContent: string;
+    try {
+      const data = await pdf(buffer);
+      textContent = data.text;
+    } catch (e) {
+      console.error("Erreur lors de la lecture du PDF :", e);
+      return NextResponse.json(
+        { error: lang === "fr" ? "Fichier PDF invalide" : "Invalid PDF file" },
+        { status: 400 }
+      );
+    }
 
-    // 2. DICTIONNAIRE DE PROMPTS (Adaptation automatique)
+    // 2. DICTIONNAIRE DE PROMPTS (inchangé)
     const prompts = {
       fr: `Tu es un analyste senior. Structure de réponse :
            1. NATURE ET CONTEXTE
            2. PRÉSENTATION DE LA SOCIÉTÉ
            3. SYNTHÈSE DES AXES MAJEURS
-           4. Analyse DES COMPTES 
+           4. Analyse DES COMPTES
            5. CONCLUSION
            Ajoute [CHART_DATA] {"years": [], "revenue": [], "netIncome": []} [/CHART_DATA]`,
-      
       en: `You are a senior analyst. Response structure:
            1. NATURE AND CONTEXT
            2. COMPANY OVERVIEW
@@ -48,12 +55,12 @@ export async function POST(req: Request) {
       - Titles in UPPERCASE.
       - Stay factual.`;
 
-    // 3. APPEL MISTRAL
+    // 3. APPEL MISTRAL (inchangé)
     const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.MISTRAL_API_KEY}` 
+        "Authorization": `Bearer ${process.env.MISTRAL_API_KEY}`
       },
       body: JSON.stringify({
         model: "mistral-large-latest",
@@ -61,14 +68,23 @@ export async function POST(req: Request) {
           { role: "system", content: systemPrompt },
           { role: "user", content: `Analyze this: ${textContent.substring(0, 15000)}` }
         ],
-        temperature: 0.1 
+        temperature: 0.1
       })
     });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("Erreur Mistral API:", errorData);
+      return NextResponse.json(
+        { error: "Erreur API Mistral", details: errorData },
+        { status: 500 }
+      );
+    }
 
     const data = await response.json();
     const fullContent = data.choices[0].message.content;
 
-    // 4. NETTOYAGE (Identique à ton code)
+    // 4. NETTOYAGE (inchangé)
     const chartMatch = fullContent.match(/\[CHART_DATA\]([\s\S]*?)\[\/CHART_DATA\]/);
     let chartData = null;
     let cleanResponse = fullContent.replace(/\[CHART_DATA\][\s\S]*?\[\/CHART_DATA\]/, "");
@@ -79,13 +95,17 @@ export async function POST(req: Request) {
 
     cleanResponse = cleanResponse.replace(/\*\*/g, "").replace(/#/g, "").trim();
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       analysis: cleanResponse,
       chartData: chartData,
-      rawText: textContent 
+      rawText: textContent
     });
 
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Erreur serveur:", error);
+    return NextResponse.json(
+      { error: error.message || "Erreur interne" },
+      { status: 500 }
+    );
   }
 }
